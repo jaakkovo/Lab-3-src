@@ -15,7 +15,8 @@
 #include <stdio.h>
 #include <string>
 #include "string.h"
-
+#include <cstdlib>
+#include "ITM_write.h"
 
 #if defined (__USE_LPCOPEN)
 #if defined(NO_BOARD_LIB)
@@ -29,7 +30,7 @@
 
 // TODO: insert other include files here
 QueueHandle_t xQueue = NULL;
-
+QueueHandle_t xQueue2 = NULL;
 char word[61];
 char empty[61];
 int indexi = 0;
@@ -43,7 +44,7 @@ static void task1(void *pvParameters) {
 	while (1) {
 		character = Board_UARTGetChar();
 		if (character != -1){
-			if (character != 10 && character != 13 && character != 8){
+			if (character != 10 && character != 13 && character != 8 && numberof <= 5){
 				Board_UARTPutChar(character);
 				numberof++;
 			}else{
@@ -103,6 +104,145 @@ static void task3(void *pvParameters) {
 	}
 }
 
+/* UART (or output) thread */
+static void task1_2(void *pvParameters) {
+	int numberof = 0;
+	int character;
+
+	while (1) {
+
+		vTaskDelay(configTICK_RATE_HZ / (rand() % 9 + 2));
+
+		if (character != -1){
+			character = (rand() % 10 + 48);
+
+			Board_UARTPutChar(character);
+			numberof++;
+
+			Board_UARTPutSTR ("\r\n");
+			if( xQueueSendToBack( xQueue2,( void * ) &numberof,( TickType_t ) 10 ) != pdPASS )
+			{
+				// fail
+			}
+			numberof = 0;
+		}
+	}
+}
+
+/* UART (or output) thread */
+static void task2_2(void *pvParameters) {
+	int emergency = 112;
+	int send = 0;
+
+	while (1) {
+		while (!Chip_GPIO_GetPinState(LPC_GPIO, 0, 17)){
+			send = 1;
+		}
+		if(send == 1){
+			if( xQueueSendToFront( xQueue2,( void * ) &emergency,( TickType_t ) 10 ) != pdPASS )
+			{
+				// fail
+			}
+			send = 0;
+			vTaskDelay(configTICK_RATE_HZ / 20);
+		}
+	}
+}
+
+/* UART (or output) thread */
+static void task3_2(void *pvParameters) {
+	int number = 0;
+	char s[3];
+
+	while (1) {
+		if( xQueueReceive( xQueue2, &( number ), ( TickType_t ) 10 ) )
+		{
+			sprintf(s, "%d", number);
+			Board_UARTPutSTR(s);
+
+			if (number == 112){
+				Board_UARTPutSTR(" Help me \r\n");
+			}else{
+				Board_UARTPutSTR(" \r\n");
+			}
+			vTaskDelay(configTICK_RATE_HZ / 3.333);
+		}
+	}
+}
+
+/* UART (or output) thread */
+static void task1_3(void *pvParameters) {
+	int numberof = 0;
+	int character;
+
+	while (1) {
+
+		vTaskDelay(configTICK_RATE_HZ / (rand() % 9 + 2));
+
+		if (character != -1){
+			character = (rand() % 10 + 48);
+
+			Board_UARTPutChar(character);
+			numberof++;
+
+			Board_UARTPutSTR ("\r\n");
+			if( xQueueSendToBack( xQueue2,( void * ) &numberof,( TickType_t ) 10 ) != pdPASS )
+			{
+				// fail
+			}
+			numberof = 0;
+		}
+	}
+}
+
+/* UART (or output) thread */
+static void task2_3(void *pvParameters) {
+	int emergency = 112;
+	int send = 0;
+
+	while (1) {
+		while (!Chip_GPIO_GetPinState(LPC_GPIO, 0, 17)){
+			send = 1;
+		}
+		if(send == 1){
+			if( xQueueSendToFront( xQueue2,( void * ) &emergency,( TickType_t ) 10 ) != pdPASS )
+			{
+				// fail
+			}
+			send = 0;
+			vTaskDelay(configTICK_RATE_HZ / 20);
+		}
+	}
+}
+
+/* UART (or output) thread */
+static void task3_3(void *pvParameters) {
+	int number = 0;
+	char s[3];
+
+	while (1) {
+		if( xQueueReceive( xQueue2, &( number ), ( TickType_t ) 10 ) )
+		{
+			sprintf(s, "%d", number);
+			Board_UARTPutSTR(s);
+
+			if (number == 112){
+				Board_UARTPutSTR(" Help me \r\n");
+			}else{
+				Board_UARTPutSTR(" \r\n");
+			}
+			vTaskDelay(configTICK_RATE_HZ / 3.333);
+		}
+	}
+}
+
+static void test(void *pvParameters){
+	while(1){
+		ITM_write("Toimii");
+		vTaskDelay(configTICK_RATE_HZ);
+	}
+}
+
 int main(void) {
 
 #if defined (__USE_LPCOPEN)
@@ -116,29 +256,74 @@ int main(void) {
 #endif
 #endif
 
-	Chip_IOCON_PinMuxSet(LPC_IOCON, 0, 17, IOCON_DIGMODE_EN);
+	ITM_init();
+
+
+
+	Chip_IOCON_PinMuxSet(LPC_IOCON, 0, 17, IOCON_DIGMODE_EN | IOCON_MODE_PULLUP);
 	Chip_GPIO_SetPinDIRInput(LPC_GPIO, 0, 17);
 
-	Chip_IOCON_PinMuxSet(LPC_IOCON, 1, 11, IOCON_DIGMODE_EN);
-	Chip_GPIO_SetPinDIRInput(LPC_GPIO, 1, 11);
+	//	Chip_IOCON_PinMuxSet(LPC_IOCON, 1, 11, IOCON_DIGMODE_EN | IOCON_MODE_PULLUP);
+	//	Chip_GPIO_SetPinDIRInput(LPC_GPIO, 1, 11);
+	//
+	//	Chip_IOCON_PinMuxSet(LPC_IOCON, 1, 9, IOCON_DIGMODE_EN | IOCON_MODE_PULLUP);
+	//	Chip_GPIO_SetPinDIRInput(LPC_GPIO, 1, 9);
 
-	Chip_IOCON_PinMuxSet(LPC_IOCON, 1, 9, IOCON_DIGMODE_EN);
-	Chip_GPIO_SetPinDIRInput(LPC_GPIO, 1, 9);
+	xQueue = xQueueCreate( 5, sizeof (int) );
+	xQueue2 = xQueueCreate( 20, sizeof (int) );
 
-	xQueue = xQueueCreate( 10, sizeof( int ) );
+	// EXERCISE 1
+	//	/* UART output thread, simply counts seconds */
+	//	xTaskCreate(task1, "task1",
+	//			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	//			(TaskHandle_t *) NULL);
+	//
+	//	/* UART output thread, simply counts seconds */
+	//	xTaskCreate(task2, "task2",
+	//			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	//			(TaskHandle_t *) NULL);
+	//
+	//	/* UART output thread, simply counts seconds */
+	//	xTaskCreate(task3, "task3",
+	//			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	//			(TaskHandle_t *) NULL);
 
+
+	// EXERCISE 2
+	//	/* UART output thread, simply counts seconds */
+	//	xTaskCreate(task1_2, "task1",
+	//			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	//			(TaskHandle_t *) NULL);
+	//
+	//	/* UART output thread, simply counts seconds */
+	//	xTaskCreate(task2_2, "task2",
+	//			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	//			(TaskHandle_t *) NULL);
+	//
+	//	/* UART output thread, simply counts seconds */
+	//	xTaskCreate(task3_2, "task3",
+	//			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	//			(TaskHandle_t *) NULL);
+
+
+	//		/* UART output thread, simply counts seconds */
+	//		xTaskCreate(test, "test",
+	//				configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	//				(TaskHandle_t *) NULL);
+
+	// EXERCISE 3
 	/* UART output thread, simply counts seconds */
-	xTaskCreate(task1, "task1",
-			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	xTaskCreate(task1_3, "task1",
+			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
 			(TaskHandle_t *) NULL);
 
 	/* UART output thread, simply counts seconds */
-	xTaskCreate(task2, "task2",
-			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
+	xTaskCreate(task2_3, "task2",
+			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 2UL),
 			(TaskHandle_t *) NULL);
 
 	/* UART output thread, simply counts seconds */
-	xTaskCreate(task3, "task3",
+	xTaskCreate(task3_3, "task3",
 			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
 			(TaskHandle_t *) NULL);
 
