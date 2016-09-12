@@ -31,6 +31,9 @@
 // TODO: insert other include files here
 QueueHandle_t xQueue = NULL;
 QueueHandle_t xQueue2 = NULL;
+QueueHandle_t xDebug = NULL;
+
+
 char word[61];
 char empty[61];
 int indexi = 0;
@@ -170,71 +173,85 @@ static void task3_2(void *pvParameters) {
 	}
 }
 
+struct debugEvent {
+	char *format;
+	uint32_t data[3];
+};
+
+
+static void debug(char *format, uint32_t d1, uint32_t d2, uint32_t d3){
+
+	debugEvent eventti;
+
+	eventti.format = format;
+	eventti.data[0] = d1;
+	eventti.data[1] = d2;
+	eventti.data[2] = d3;
+
+
+	if( xQueueSendToBack( xDebug,( void * ) &eventti,( TickType_t ) 10 ) != pdPASS )
+	{
+		// fail
+	}
+};
+
+
 /* UART (or output) thread */
 static void task1_3(void *pvParameters) {
 	int numberof = 0;
 	int character;
 
 	while (1) {
-
-		vTaskDelay(configTICK_RATE_HZ / (rand() % 9 + 2));
-
+		character = Board_UARTGetChar();
 		if (character != -1){
-			character = (rand() % 10 + 48);
+			if (character != 10 && character != 13 && character != 8 && character != 32){
 
-			Board_UARTPutChar(character);
-			numberof++;
+				Board_UARTPutChar(character);
+				numberof++;
 
-			Board_UARTPutSTR ("\r\n");
-			if( xQueueSendToBack( xQueue2,( void * ) &numberof,( TickType_t ) 10 ) != pdPASS )
-			{
-				// fail
+			}else{
+				if (character == 32 && numberof == 0){
+					Board_UARTPutChar(character);
+				}else{
+					Board_UARTPutSTR ("\r\n");
+					debug("Receiver cmd: %d at %d\n", numberof, xTaskGetTickCount(), 0);
+					numberof = 0;
+				}
 			}
-			numberof = 0;
 		}
+		vTaskDelay(configTICK_RATE_HZ / 20);
 	}
 }
 
 /* UART (or output) thread */
 static void task2_3(void *pvParameters) {
-	int emergency = 112;
-	int send = 0;
-
+	int pressLength = 0;
 	while (1) {
-		while (!Chip_GPIO_GetPinState(LPC_GPIO, 0, 17)){
-			send = 1;
-		}
-		if(send == 1){
-			if( xQueueSendToFront( xQueue2,( void * ) &emergency,( TickType_t ) 10 ) != pdPASS )
-			{
-				// fail
+		if (!Chip_GPIO_GetPinState(LPC_GPIO, 0, 17)){
+			while (!Chip_GPIO_GetPinState(LPC_GPIO, 0, 17)){
+				pressLength++;
 			}
-			send = 0;
-			vTaskDelay(configTICK_RATE_HZ / 20);
+			debug("Length of press was: %d.%d seconds.\n", pressLength/1400000, pressLength/140000, 0);
+			pressLength = 0;
 		}
+		vTaskDelay(configTICK_RATE_HZ / 24);
 	}
 }
 
-/* UART (or output) thread */
-static void task3_3(void *pvParameters) {
-	int number = 0;
-	char s[3];
-
+static void debugTask(void *pvParameters)
+{
+	char buffer[64];
+	debugEvent e;
+	// this is not complete! how do we know which queue to wait on?
 	while (1) {
-		if( xQueueReceive( xQueue2, &( number ), ( TickType_t ) 10 ) )
-		{
-			sprintf(s, "%d", number);
-			Board_UARTPutSTR(s);
-
-			if (number == 112){
-				Board_UARTPutSTR(" Help me \r\n");
-			}else{
-				Board_UARTPutSTR(" \r\n");
-			}
-			vTaskDelay(configTICK_RATE_HZ / 3.333);
-		}
+		// read queue
+		xQueueReceive(xDebug, &e, portMAX_DELAY);
+		snprintf(buffer, 64, e.format, e.data[0], e.data[1], e.data[2]);
+		ITM_write(buffer);
 	}
 }
+
+
 
 static void test(void *pvParameters){
 	while(1){
@@ -271,6 +288,7 @@ int main(void) {
 
 	xQueue = xQueueCreate( 5, sizeof (int) );
 	xQueue2 = xQueueCreate( 20, sizeof (int) );
+	xDebug = xQueueCreate(10, sizeof(debugEvent));
 
 	// EXERCISE 1
 	//	/* UART output thread, simply counts seconds */
@@ -323,7 +341,7 @@ int main(void) {
 			(TaskHandle_t *) NULL);
 
 	/* UART output thread, simply counts seconds */
-	xTaskCreate(task3_3, "task3",
+	xTaskCreate(debugTask, "debugTask",
 			configMINIMAL_STACK_SIZE, NULL, (tskIDLE_PRIORITY + 1UL),
 			(TaskHandle_t *) NULL);
 
